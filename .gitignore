@@ -1,0 +1,16 @@
+node_modules
+.next
+out
+build
+dist
+.env
+.env.local
+.DS_Store
+contracts/artifacts
+contracts/cache
+contracts/typechain-types
+contracts/deployment_address.txt
+web/.next
+web/node_modules
+coverage
+.nyc_output
