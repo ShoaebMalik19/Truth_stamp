@@ -1,21 +1,24 @@
 'use client'
+'use client'
 
-import React, { useState, useRef } from 'react'
+import React, { useState, useRef, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
-import { Loader2, CheckCircle2, AlertCircle, Link as LinkIcon, FileUp } from 'lucide-react'
+import { Loader2, CheckCircle2, AlertCircle, Link as LinkIcon, FileUp, Check, Copy } from 'lucide-react'
 import { useWriteContract, useWaitForTransactionReceipt, useAccount, useConnect, useSwitchChain } from 'wagmi'
 import { injected } from 'wagmi/connectors'
 import { keccak256, toHex } from 'viem'
+import { cn, copyToClipboard } from '@/lib/utils'
 
-// --- Contract ABI ---
 // --- Contract ABI ---
 const ABI = [
     {
         "inputs": [
             { "internalType": "bytes32", "name": "_contentHash", "type": "bytes32" },
+            { "internalType": "bytes32", "name": "_perceptualHash", "type": "bytes32" },
+            { "internalType": "bytes32", "name": "_potentialParentHash", "type": "bytes32" },
             { "internalType": "string", "name": "_sourceUrl", "type": "string" },
             { "internalType": "string", "name": "_metadata", "type": "string" },
             { "internalType": "bytes32", "name": "_attestationId", "type": "bytes32" },
@@ -28,9 +31,7 @@ const ABI = [
     }
 ] as const
 
-const ContractAddress = process.env.NEXT_PUBLIC_CONTRACT_ADDRESS || "0xe2e255dc2111Fc3711F17e9bE39ed903150c9E48"
-
-import { cn, copyToClipboard } from '@/lib/utils'
+const ContractAddress = process.env.NEXT_PUBLIC_CONTRACT_ADDRESS || "0xF2bFce624186fb52d7428E14460050215A74596A"
 
 export default function StampPage() {
     const { isConnected, chain } = useAccount()
@@ -41,7 +42,10 @@ export default function StampPage() {
     const [url, setUrl] = useState('')
     const [loading, setLoading] = useState(false)
     const [hash, setHash] = useState<string | null>(null)
+    const [perceptualHash, setPerceptualHash] = useState<string | null>(null)
     const [error, setError] = useState('')
+    const [parentHash, setParentHash] = useState('')
+    const [showCopied, setShowCopied] = useState(false)
 
     // FDC State
     const [attestationStatus, setAttestationStatus] = useState<'idle' | 'requesting' | 'verified'>('idle')
@@ -54,6 +58,22 @@ export default function StampPage() {
     const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({
         hash: hashTx,
     })
+
+    // Advance step and clearing error
+    useEffect(() => {
+        if (isConfirmed) setStep(3)
+    }, [isConfirmed])
+
+    useEffect(() => {
+        if (writeError) setError("Wallet transaction failed or rejected. Make sure you have testnet tokens.")
+    }, [writeError])
+
+    // Copy Feedback Helper
+    const handleCopy = (text: string) => {
+        copyToClipboard(text)
+        setShowCopied(true)
+        setTimeout(() => setShowCopied(false), 2000)
+    }
 
     // Handle File Selection
     const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -70,7 +90,14 @@ export default function StampPage() {
             // Hash file content
             const demoHash = keccak256(fileBytes)
 
+            // Simulate Perceptual Hash
+            // FOR DEMO/TESTING ONLY: We use the file size as the "perceptual hash".
+            // This allows us to easily test "Derived" content by uploading a different file of the exact same size.
+            // In production, this would use a real perceptual hashing algorithm (e.g. pHash).
+            const demoPHash = toHex(file.size, { size: 32 })
+
             setHash(demoHash)
+            setPerceptualHash(demoPHash)
             const fakeUrl = `file://${file.name}`
             setUrl(fakeUrl)
 
@@ -99,7 +126,10 @@ export default function StampPage() {
             // If file was already processed, hash is already set
             if (!hash) {
                 const mockHash = keccak256(toHex(url + Date.now()))
+                // Demo Logic: Use URL length as perceptual hash to easily trigger derivation
+                const mockPHash = toHex(url.length, { size: 32 })
                 setHash(mockHash)
+                setPerceptualHash(mockPHash)
             }
             setStep(2)
         } catch (err: any) {
@@ -109,10 +139,18 @@ export default function StampPage() {
         }
     }
 
+    // Handle Enter Key
+    const handleKeyDown = (e: React.KeyboardEvent) => {
+        if (e.key === 'Enter') {
+            handleComputeHash()
+        }
+    }
+
     const handleStamp = async () => {
-        if (!hash) return
+        if (!hash || !perceptualHash) return
 
         if (!isConnected) {
+            // This condition is handled by the UI button now, but redundancy doesn't hurt.
             try {
                 connect({ connector: injected() })
                 return
@@ -125,13 +163,13 @@ export default function StampPage() {
         // Enforce Network Switch
         const targetChainId = Number(process.env.NEXT_PUBLIC_CHAIN_ID || 114)
         if (chain?.id !== targetChainId) {
+            setError(`Please switch your wallet to Flare Coston2 Testnet (Chain ID: ${targetChainId})`)
             try {
                 switchChain({ chainId: targetChainId })
-                return // Wait for the switch to complete, user will click again
             } catch (e) {
-                setError(`Please switch your wallet to the correct network (Chain ID: ${targetChainId})`)
-                return
+                console.warn("Auto-switch failed or rejected", e)
             }
+            return
         }
 
         try {
@@ -141,35 +179,45 @@ export default function StampPage() {
             const mockAttestationId = keccak256(toHex("round1"))
             const mockProof = toHex("valid_merkle_proof")
 
+            // Validate parent hash if provided
+            let potentialParentHash = "0x0000000000000000000000000000000000000000000000000000000000000000"
+            if (parentHash && parentHash.trim().length > 0) {
+                if (/^0x[a-fA-F0-9]{64}$/.test(parentHash.trim())) {
+                    potentialParentHash = parentHash.trim()
+                } else {
+                    setError("Invalid Parent Hash format. Must be 0x... (32 bytes hex)")
+                    setAttestationStatus('idle')
+                    return
+                }
+            }
+
             writeContract({
                 address: ContractAddress as `0x${string}`,
                 abi: ABI,
                 functionName: 'createStamp',
                 args: [
                     hash as `0x${string}`,
+                    perceptualHash as `0x${string}`,
+                    potentialParentHash as `0x${string}`,
                     url,
                     JSON.stringify({ title: fileName || "Stamped Content" }),
                     mockAttestationId,
                     mockProof
                 ],
-                chainId: 114,
+                chainId: targetChainId,
             })
             setAttestationStatus('verified')
-        } catch (e) {
+        } catch (e: any) {
             console.error(e)
-            setError("Transaction failed to start.")
+            // Check for duplicate error from contract
+            if (e.message && (e.message.includes("DUPLICATE") || e.message.includes("Content already stamped"))) {
+                setError("This content is already stamped on-chain! You cannot stamp an exact duplicate.")
+            } else {
+                setError(e instanceof Error ? e.message : "Transaction failed to start.")
+            }
             setAttestationStatus('idle')
         }
     }
-
-    // Advance step and clearing error
-    React.useEffect(() => {
-        if (isConfirmed) setStep(3)
-    }, [isConfirmed])
-
-    React.useEffect(() => {
-        if (writeError) setError("Wallet transaction failed or rejected. Make sure you have testnet tokens.")
-    }, [writeError])
 
     return (
         <div className="min-h-screen bg-slate-950 text-white p-4 flex items-center justify-center">
@@ -225,6 +273,7 @@ export default function StampPage() {
                                                 className="pl-9"
                                                 value={url}
                                                 onChange={(e) => setUrl(e.target.value)}
+                                                onKeyDown={handleKeyDown}
                                                 disabled={!!fileName}
                                             />
                                         </div>
@@ -278,6 +327,11 @@ export default function StampPage() {
                                         <code className="text-teal-400 text-sm break-all font-mono">{hash}</code>
                                     </div>
 
+                                    <div className="bg-slate-950 p-4 rounded-lg border border-slate-800 mt-2">
+                                        <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Perceptual Hash</p>
+                                        <code className="text-indigo-400 text-sm break-all font-mono">{perceptualHash}</code>
+                                    </div>
+
                                     <div className="space-y-2">
                                         <h4 className="text-sm font-medium text-slate-300">Confirmation Steps</h4>
                                         <ul className="text-sm text-slate-400 space-y-2 pl-4 list-disc">
@@ -287,17 +341,48 @@ export default function StampPage() {
                                         </ul>
                                     </div>
 
+                                    <div className="space-y-2 pt-2 border-t border-slate-800">
+                                        <label className="text-sm font-medium text-slate-300">Linked Original Hash (Optional)</label>
+                                        <Input
+                                            placeholder="0x..."
+                                            className="font-mono text-xs bg-slate-900/50 border-slate-800"
+                                            value={parentHash}
+                                            onChange={(e) => setParentHash(e.target.value)}
+                                        />
+                                        <p className="text-xs text-slate-500">
+                                            If this content is derived from an existing stamp, paste its hash here to link them.
+                                        </p>
+                                    </div>
+
+                                    {error && (
+                                        <div className="flex items-center gap-2 text-amber-400 text-sm bg-amber-950/20 p-2 rounded">
+                                            <AlertCircle className="w-4 h-4" /> {error}
+                                        </div>
+                                    )}
+
                                     <div className="flex gap-3">
                                         <Button variant="outline" className="flex-1" onClick={() => { setStep(1); setHash(null); setFileName(null); setUrl('') }}>Back</Button>
-                                        <Button
-                                            className="flex-1"
-                                            variant="premium"
-                                            onClick={handleStamp}
-                                            disabled={isWritePending || isConfirming}
-                                        >
-                                            {isWritePending ? 'Sign Request...' : isConfirming ? 'Minting...' : !isConnected ? 'Connect Wallet' : 'Stamp on Chain'}
-                                            {(isWritePending || isConfirming) && <Loader2 className="animate-spin ml-2 w-4 h-4" />}
-                                        </Button>
+
+                                        {!isConnected ? (
+                                            <Button
+                                                className="flex-1 bg-yellow-600 hover:bg-yellow-700 text-white"
+                                                onClick={() => {
+                                                    try { connect({ connector: injected() }) } catch (err) { console.error(err); setError("Wallet connection failed") }
+                                                }}
+                                            >
+                                                Connect Wallet
+                                            </Button>
+                                        ) : (
+                                            <Button
+                                                className="flex-1"
+                                                variant="premium"
+                                                onClick={handleStamp}
+                                                disabled={isWritePending || isConfirming}
+                                            >
+                                                {isWritePending ? 'Sign Request...' : isConfirming ? 'Minting...' : 'Stamp on Chain'}
+                                                {(isWritePending || isConfirming) && <Loader2 className="animate-spin ml-2 w-4 h-4" />}
+                                            </Button>
+                                        )}
                                     </div>
                                 </motion.div>
                             )}
@@ -320,8 +405,8 @@ export default function StampPage() {
                                     <div className="bg-slate-950 p-4 rounded-lg border border-slate-800 space-y-3 mb-6">
                                         <div className="flex items-center justify-between gap-2">
                                             <span className="text-xs text-slate-500 uppercase font-semibold">Verification URL</span>
-                                            <Button size="sm" variant="ghost" className="h-6 text-xs" onClick={() => copyToClipboard(`${window.location.origin}/verify/${hash}`)}>
-                                                Copy Link
+                                            <Button size="sm" variant="ghost" className="h-6 text-xs flex items-center gap-1" onClick={() => handleCopy(`${window.location.origin}/verify/${hash}`)}>
+                                                {showCopied ? <span className="text-emerald-400 flex items-center gap-1"><Check className="w-3 h-3" /> Copied</span> : <span className="flex items-center gap-1"><Copy className="w-3 h-3" /> Copy Link</span>}
                                             </Button>
                                         </div>
                                         <div className="text-sm text-teal-400 bg-slate-900/50 p-2 rounded break-all font-mono border border-slate-800/50">
@@ -330,8 +415,8 @@ export default function StampPage() {
 
                                         <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-800/50">
                                             <span className="text-xs text-slate-500 uppercase font-semibold">Content Hash</span>
-                                            <Button size="sm" variant="ghost" className="h-6 text-xs" onClick={() => copyToClipboard(hash || '')}>
-                                                Copy Hash
+                                            <Button size="sm" variant="ghost" className="h-6 text-xs flex items-center gap-1" onClick={() => handleCopy(hash || '')}>
+                                                {showCopied ? <span className="text-emerald-400 flex items-center gap-1"><Check className="w-3 h-3" /> Copied</span> : <span className="flex items-center gap-1"><Copy className="w-3 h-3" /> Copy Hash</span>}
                                             </Button>
                                         </div>
                                         <div className="text-xs text-slate-400 font-mono break-all">

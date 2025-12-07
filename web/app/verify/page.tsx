@@ -15,10 +15,11 @@ const ABI = [
         "name": "verifyContent",
         "outputs": [
             { "internalType": "bool", "name": "exists", "type": "bool" },
-            { "internalType": "uint256", "name": "firstTimestamp", "type": "uint256" },
-            { "internalType": "address", "name": "firstOwner", "type": "address" },
+            { "internalType": "uint256", "name": "timestamp", "type": "uint256" },
+            { "internalType": "address", "name": "owner", "type": "address" },
             { "internalType": "string", "name": "sourceUrl", "type": "string" },
-            { "internalType": "bool", "name": "isVerified", "type": "bool" }
+            { "internalType": "uint8", "name": "matchType", "type": "uint8" },
+            { "internalType": "bytes32", "name": "derivedFrom", "type": "bytes32" }
         ],
         "stateMutability": "view",
         "type": "function"
@@ -28,16 +29,18 @@ const ABI = [
         "name": "verifyUrl",
         "outputs": [
             { "internalType": "bool", "name": "exists", "type": "bool" },
-            { "internalType": "uint256", "name": "firstTimestamp", "type": "uint256" },
-            { "internalType": "address", "name": "firstOwner", "type": "address" },
-            { "internalType": "bytes32", "name": "contentHash", "type": "bytes32" }
+            { "internalType": "uint256", "name": "timestamp", "type": "uint256" },
+            { "internalType": "address", "name": "owner", "type": "address" },
+            { "internalType": "bytes32", "name": "contentHash", "type": "bytes32" },
+            { "internalType": "uint8", "name": "matchType", "type": "uint8" },
+            { "internalType": "bytes32", "name": "derivedFrom", "type": "bytes32" }
         ],
         "stateMutability": "view",
         "type": "function"
     }
 ] as const
 
-const ContractAddress = process.env.NEXT_PUBLIC_CONTRACT_ADDRESS || "0xe2e255dc2111Fc3711F17e9bE39ed903150c9E48"
+const ContractAddress = process.env.NEXT_PUBLIC_CONTRACT_ADDRESS || "0xF2bFce624186fb52d7428E14460050215A74596A"
 
 export default function VerifyPage() {
     const [query, setQuery] = useState('')
@@ -67,6 +70,20 @@ export default function VerifyPage() {
     // Normalize result
     const result = searchType === 'hash' ? hashResult : urlResult
     const exists = result ? result[0] : false
+
+    // Result Parsing
+    const timestamp = result ? Number(result[1]) : 0
+    const owner = result ? result[2] : ''
+    // Hash specific result has url at index 3, URL specific result has hash at index 3
+    const contentRef = searchType === 'hash' ? (result as any)?.[3] : (result as any)?.[3]
+
+    // Determine Match Type
+    // Enum: 0 = ORIGINAL, 1 = DERIVED, 2 = DUPLICATE
+    const matchTypeInt = result ? Number((result as any)[4]) : 0
+    const derivedFrom = result ? (result as any)[5] : null
+
+    const matchTypeLabel = matchTypeInt === 0 ? "ORIGINAL" : matchTypeInt === 1 ? "DERIVED" : "DUPLICATE"
+    const isOriginal = matchTypeInt === 0
 
     const handleSearch = () => {
         const trimmed = query.trim()
@@ -115,6 +132,7 @@ export default function VerifyPage() {
                         className="h-12 bg-slate-900/80 border-slate-800"
                         value={query}
                         onChange={(e) => setQuery(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
                     />
                     <Button size="lg" variant="premium" onClick={handleSearch} disabled={!query}>
                         <Search className="w-5 h-5" />
@@ -130,14 +148,22 @@ export default function VerifyPage() {
                         {isLoading ? (
                             <div className="text-center text-slate-500">Scanning Flare Registry...</div>
                         ) : exists && result ? (
-                            <Card className="bg-slate-900/40 border-emerald-500/30 backdrop-blur-md overflow-hidden">
-                                <div className="h-2 bg-emerald-500 w-full" />
+                            <Card className={`bg-slate-900/40 backdrop-blur-md overflow-hidden border ${isOriginal ? 'border-emerald-500/30' : 'border-amber-500/30'}`}>
+                                <div className={`h-2 w-full ${isOriginal ? 'bg-emerald-500' : 'bg-amber-500'}`} />
                                 <CardHeader>
                                     <div className="flex items-center gap-3">
-                                        <BadgeCheck className="w-8 h-8 text-emerald-400" />
+                                        {isOriginal ? <BadgeCheck className="w-8 h-8 text-emerald-400" /> : <ShieldAlert className="w-8 h-8 text-amber-400" />}
                                         <div>
-                                            <CardTitle className="text-emerald-400">Authentic Original Found</CardTitle>
-                                            <p className="text-slate-400 text-sm">This content was stamped and verified.</p>
+                                            <CardTitle className={isOriginal ? 'text-emerald-400' : 'text-amber-400'}>
+                                                {isOriginal ? 'Authentic Original Found' : matchTypeInt === 1 ? 'Derived Content Detected' : 'Duplicate Content'}
+                                            </CardTitle>
+                                            <p className="text-slate-400 text-sm">
+                                                {isOriginal
+                                                    ? "This content is the earliest known instance on-chain."
+                                                    : matchTypeInt === 1
+                                                        ? "This content appears to be modified/derived from an earlier source."
+                                                        : "This content is an exact duplicate of an earlier stamp."}
+                                            </p>
                                         </div>
                                     </div>
                                 </CardHeader>
@@ -148,35 +174,36 @@ export default function VerifyPage() {
                                             <div className="flex items-center gap-2 text-xl font-mono text-white mt-1">
                                                 <Clock className="w-5 h-5 text-teal-500" />
                                                 {/* Ensure BigInt is converted to Number safely since block timestamps fit in number */}
-                                                {new Date(Number(result[1]) * 1000).toLocaleString()}
+                                                {new Date(timestamp * 1000).toLocaleString()}
                                             </div>
                                         </div>
 
                                         <div className="p-4 rounded-lg bg-slate-950/50 border border-slate-800">
                                             <span className="text-xs text-slate-500 uppercase">Owner Address</span>
                                             <div className="font-mono text-slate-300 text-sm break-all mt-1">
-                                                {result[2]}
+                                                {owner}
                                             </div>
                                         </div>
                                     </div>
 
                                     <div className="space-y-4">
-                                        <div className="p-4 rounded-lg bg-slate-950/50 border border-slate-800">
-                                            <span className="text-xs text-slate-500 uppercase">FTSO Consensus</span>
-                                            <div className="text-slate-300 text-sm mt-1">
-                                                Time confirmed by Flare Time Series Oracle.
-                                            </div>
-                                        </div>
-
-                                        {/* If searching by URL, show the hash we found */}
-                                        {searchType === 'url' && (
-                                            <div className="p-4 rounded-lg bg-slate-950/50 border border-slate-800">
-                                                <span className="text-xs text-slate-500 uppercase">Matched Content Hash</span>
-                                                <div className="font-mono text-xs text-slate-400 break-all mt-1">
-                                                    {result[3] as string}
+                                        {derivedFrom && derivedFrom !== "0x0000000000000000000000000000000000000000000000000000000000000000" && (
+                                            <div className="p-4 rounded-lg bg-amber-950/20 border border-amber-900/50">
+                                                <span className="text-xs text-amber-500 uppercase font-bold">⚠️ Derived From / Linked To</span>
+                                                <div className="font-mono text-xs text-amber-200 break-all mt-1">
+                                                    <a href={`/verify/${derivedFrom}`} className="hover:underline flex items-center gap-1">
+                                                        {derivedFrom} <ExternalLink className="w-3 h-3" />
+                                                    </a>
                                                 </div>
                                             </div>
                                         )}
+
+                                        <div className="p-4 rounded-lg bg-slate-950/50 border border-slate-800">
+                                            <span className="text-xs text-slate-500 uppercase">Matched Content Hash</span>
+                                            <div className="font-mono text-xs text-slate-400 break-all mt-1">
+                                                {searchType === 'url' ? contentRef : searchValue}
+                                            </div>
+                                        </div>
 
                                         <Button variant="outline" className="w-full flex justify-between items-center group">
                                             View on Flare Explorer

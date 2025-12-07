@@ -1,6 +1,6 @@
 import { createConfig, http } from 'wagmi'
 import { defineChain } from 'viem'
-import { hardhat } from 'viem/chains'
+
 import { injected } from 'wagmi/connectors'
 
 export const coston2 = defineChain({
@@ -21,10 +21,9 @@ export const coston2 = defineChain({
 })
 
 export const config = createConfig({
-    chains: [hardhat, coston2],
+    chains: [coston2],
     connectors: [injected()],
     transports: {
-        [hardhat.id]: http(),
         [coston2.id]: http('https://coston2-api.flare.network/ext/C/rpc'),
     },
 })
