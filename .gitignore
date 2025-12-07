@@ -60,3 +60,4 @@ Thumbs.db
 *.key
 tmp/
 temp/
+.gitignore
