@@ -34,6 +34,7 @@ contract TruthStamp {
 
     mapping(bytes32 => Stamp) public stamps; 
     mapping(string => bytes32) public urlToHash;
+    bytes32[] public stampKeys;
 
     event NewTruthStampCreated(
         bytes32 indexed contentHash,
@@ -50,9 +51,6 @@ contract TruthStamp {
 
     /**
      * @notice Create a stamp with classification logic.
-     * @param _contentHash Exact hash
-     * @param _perceptualHash Perceptual hash for similarity check
-     * @param _potentialParentHash Client-proposed parent hash (optimization)
      */
     function createStamp(
         bytes32 _contentHash,
@@ -65,12 +63,6 @@ contract TruthStamp {
     ) public {
         // Rule 1: Existence Check (DUPLICATE)
         if (stamps[_contentHash].ftsoTimestamp != 0) {
-            // Already exists. We don't revert to allow "re-stamping" as a claim, but we mark as duplicate.
-            // However, to save gas and storage, if it exists, we might just revert or emit event.
-            // The prompt says "If exact contentHash already exists -> mark as DUPLICATE".
-            // Implementation: We can't overwrite the original stamp. We should probably revert OR emit an event.
-            // Let's emit specific event and revert to keep storage clean, OR allow overwrite if we store an array of claims.
-            // Current archi stores 1 struct. Let's strictly REVERT if it exists to protect the original.
             revert("DUPLICATE: Content already stamped.");
         }
 
@@ -90,7 +82,7 @@ contract TruthStamp {
             } catch {}
         }
 
-        // Rule 2 & 3: Originality Logic
+        // Rule 2 & 3: Originality Logic (simplified since UI blocks derived now, but we keep structure)
         StampType finalType = StampType.ORIGINAL;
         bytes32 parent = bytes32(0);
 
@@ -120,6 +112,7 @@ contract TruthStamp {
         });
 
         urlToHash[_sourceUrl] = _contentHash;
+        stampKeys.push(_contentHash);
 
         emit NewTruthStampCreated(_contentHash, finalType, parent, msg.sender, trustedTime);
     }
@@ -131,6 +124,35 @@ contract TruthStamp {
                 dist++;
             }
         }
+    }
+
+    // Helper to find similar content on-chain (iterative, care with gas if used in transaction)
+    // Best used as a view function for frontend checks
+    function findSimilarStamp(bytes32 _perceptualHash) public view returns (bool found, bytes32 matchHash, uint256 distance, uint256 timestamp, address owner) {
+        uint256 minDistance = type(uint256).max;
+        bytes32 closestHash = bytes32(0);
+
+        for (uint i = 0; i < stampKeys.length; i++) {
+            bytes32 key = stampKeys[i];
+            Stamp memory s = stamps[key];
+            
+            if (s.ftsoTimestamp == 0) continue;
+
+            uint256 dist = hammingDistance(_perceptualHash, s.perceptualHash);
+            
+            // Prioritize closer matches, tie-break with older timestamp (implied by array order if sequential)
+            if (dist < minDistance) {
+                minDistance = dist;
+                closestHash = key;
+            }
+        }
+
+        if (minDistance <= SIMILARITY_THRESHOLD) {
+            Stamp memory matchedStamp = stamps[closestHash];
+            return (true, closestHash, minDistance, matchedStamp.ftsoTimestamp, matchedStamp.owner);
+        }
+
+        return (false, bytes32(0), 0, 0, address(0));
     }
 
     function verifyContent(bytes32 _contentHash) public view returns (

@@ -7,12 +7,12 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Loader2, CheckCircle2, AlertCircle, Link as LinkIcon, FileUp, Check, Copy } from 'lucide-react'
-import { useWriteContract, useWaitForTransactionReceipt, useAccount, useConnect, useSwitchChain } from 'wagmi'
+import { useWriteContract, useWaitForTransactionReceipt, useAccount, useConnect, useSwitchChain, useReadContract } from 'wagmi'
+
 import { injected } from 'wagmi/connectors'
 import { keccak256, toHex } from 'viem'
 import { cn, copyToClipboard } from '@/lib/utils'
 
-// --- Contract ABI ---
 const ABI = [
     {
         "inputs": [
@@ -28,10 +28,37 @@ const ABI = [
         "outputs": [],
         "stateMutability": "nonpayable",
         "type": "function"
+    },
+    {
+        "inputs": [{ "internalType": "bytes32", "name": "_contentHash", "type": "bytes32" }],
+        "name": "verifyContent",
+        "outputs": [
+            { "internalType": "bool", "name": "exists", "type": "bool" },
+            { "internalType": "uint256", "name": "timestamp", "type": "uint256" },
+            { "internalType": "address", "name": "owner", "type": "address" },
+            { "internalType": "string", "name": "sourceUrl", "type": "string" },
+            { "internalType": "uint8", "name": "matchType", "type": "uint8" },
+            { "internalType": "bytes32", "name": "derivedFrom", "type": "bytes32" }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [{ "internalType": "bytes32", "name": "_perceptualHash", "type": "bytes32" }],
+        "name": "findSimilarStamp",
+        "outputs": [
+            { "internalType": "bool", "name": "found", "type": "bool" },
+            { "internalType": "bytes32", "name": "matchHash", "type": "bytes32" },
+            { "internalType": "uint256", "name": "distance", "type": "uint256" },
+            { "internalType": "uint256", "name": "timestamp", "type": "uint256" },
+            { "internalType": "address", "name": "owner", "type": "address" }
+        ],
+        "stateMutability": "view",
+        "type": "function"
     }
 ] as const
 
-const ContractAddress = process.env.NEXT_PUBLIC_CONTRACT_ADDRESS || "0xF2bFce624186fb52d7428E14460050215A74596A"
+const ContractAddress = process.env.NEXT_PUBLIC_CONTRACT_ADDRESS || "0x77409263fa088B612b004F59b37a9b94d3B121b1"
 
 export default function StampPage() {
     const { isConnected, chain } = useAccount()
@@ -44,7 +71,6 @@ export default function StampPage() {
     const [hash, setHash] = useState<string | null>(null)
     const [perceptualHash, setPerceptualHash] = useState<string | null>(null)
     const [error, setError] = useState('')
-    const [parentHash, setParentHash] = useState('')
     const [showCopied, setShowCopied] = useState(false)
 
     // FDC State
@@ -74,6 +100,24 @@ export default function StampPage() {
         setShowCopied(true)
         setTimeout(() => setShowCopied(false), 2000)
     }
+
+    // Pre-check for Duplicates
+    const duplicateCheck = useReadContract({
+        address: ContractAddress as `0x${string}`,
+        abi: ABI,
+        functionName: 'verifyContent',
+        args: [hash ? (hash as `0x${string}`) : '0x0000000000000000000000000000000000000000000000000000000000000000'],
+        query: { enabled: !!hash }
+    })
+
+    // Pre-check for Similarity
+    const similarityCheck = useReadContract({
+        address: ContractAddress as `0x${string}`,
+        abi: ABI,
+        functionName: 'findSimilarStamp',
+        args: [perceptualHash ? (perceptualHash as `0x${string}`) : '0x0000000000000000000000000000000000000000000000000000000000000000'],
+        query: { enabled: !!perceptualHash }
+    })
 
     // Handle File Selection
     const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -172,6 +216,18 @@ export default function StampPage() {
             return
         }
 
+        // Pre-flight checks
+        if (duplicateCheck.data && duplicateCheck.data[0]) {
+            setError("This exact content has already been stamped. TruthStamp only allows the first original to be recorded.")
+            return
+        }
+
+        if (similarityCheck.data && similarityCheck.data[0]) {
+            const originalHash = similarityCheck.data[1];
+            setError(`This content appears to be derived from an already stamped original (Hash: ${originalHash.slice(0, 10)}...). TruthStamp prevents re-stamping copies.`)
+            return
+        }
+
         try {
             // Mock FDC generation flow
             setAttestationStatus('requesting')
@@ -179,17 +235,9 @@ export default function StampPage() {
             const mockAttestationId = keccak256(toHex("round1"))
             const mockProof = toHex("valid_merkle_proof")
 
-            // Validate parent hash if provided
-            let potentialParentHash = "0x0000000000000000000000000000000000000000000000000000000000000000"
-            if (parentHash && parentHash.trim().length > 0) {
-                if (/^0x[a-fA-F0-9]{64}$/.test(parentHash.trim())) {
-                    potentialParentHash = parentHash.trim()
-                } else {
-                    setError("Invalid Parent Hash format. Must be 0x... (32 bytes hex)")
-                    setAttestationStatus('idle')
-                    return
-                }
-            }
+            // We now rely on client-side check or contract check for derived logic, 
+            // but since we block derived stamps in UI, we pass 0x0
+            const potentialParentHash = "0x0000000000000000000000000000000000000000000000000000000000000000"
 
             writeContract({
                 address: ContractAddress as `0x${string}`,
@@ -220,22 +268,22 @@ export default function StampPage() {
     }
 
     return (
-        <div className="min-h-screen bg-slate-950 text-white p-4 flex items-center justify-center">
-            <div className="w-full max-w-xl">
+        <div className="min-h-screen bg-slate-950 text-slate-50 p-4 font-sans">
+            <div className="max-w-xl mx-auto pt-24 pb-12">
                 <motion.div
                     initial={{ opacity: 0, y: -20 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="mb-8 text-center"
+                    className="mb-10 text-center"
                 >
-                    <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-teal-400 to-emerald-500">
+                    <h1 className="text-4xl font-extrabold mb-4 bg-clip-text text-transparent bg-gradient-to-r from-teal-400 to-emerald-500">
                         Stamp Your Content
                     </h1>
-                    <p className="text-slate-400 mt-2">
+                    <p className="text-slate-400 text-lg">
                         Create an immutable proof of existence on the Flare Network.
                     </p>
                 </motion.div>
 
-                <Card className="border-slate-800 bg-slate-900/40 backdrop-blur-xl shadow-2xl overflow-hidden">
+                <Card className="border-slate-800 bg-slate-900/50 backdrop-blur-xl shadow-2xl overflow-hidden">
                     <div className="bg-slate-900/50 p-1 flex">
                         {[1, 2, 3].map((s) => (
                             <div
@@ -341,18 +389,7 @@ export default function StampPage() {
                                         </ul>
                                     </div>
 
-                                    <div className="space-y-2 pt-2 border-t border-slate-800">
-                                        <label className="text-sm font-medium text-slate-300">Linked Original Hash (Optional)</label>
-                                        <Input
-                                            placeholder="0x..."
-                                            className="font-mono text-xs bg-slate-900/50 border-slate-800"
-                                            value={parentHash}
-                                            onChange={(e) => setParentHash(e.target.value)}
-                                        />
-                                        <p className="text-xs text-slate-500">
-                                            If this content is derived from an existing stamp, paste its hash here to link them.
-                                        </p>
-                                    </div>
+
 
                                     {error && (
                                         <div className="flex items-center gap-2 text-amber-400 text-sm bg-amber-950/20 p-2 rounded">
