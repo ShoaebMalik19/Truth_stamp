@@ -1,93 +1,83 @@
-# TruthStamp - Anti-Fake Content Proof Engine
+# TruthStamp 🛡️
 
-Hello! 👋 Welcome to TruthStamp. This is a "decentralized application" (dApp) that helps you prove that a piece of content (like a photo or news article) existed at a certain time.
+**A Digital Notary for the Age of AI.**
 
-We use the **Flare Network** (specifically the Coston2 testnet) to store these proofs permanently.
-
-## 📂 Project Structure
-
-This project has two main folders:
-
-1.  **`contracts`**: This contains the **Smart Contract**. Think of this as the "backend database logic" that lives on the blockchain.
-    *   `TruthStamp.sol`: The actual code that stores the "stamps".
-2.  **`web`**: This is the **Frontend**. It is the website you see and interact with. It talks to the Smart Contract.
+TruthStamp helps you prove that a photo, video, or file is **real** and **original**. It uses the **Flare Blockchain** to create a permanent, unchangeable record of your content.
 
 ---
 
-## 🚀 Quick Start Guide
+## 🐣 For Complete Beginners: What is this?
 
-**Follow these steps exactly to run the app on your computer.**
+Imagine you take a photo of a breaking news event. How do you prove you took it *first*, and that nobody edited it?
 
-### Step 1: Install Prerequisites
-First, you need to set up your environment.
-👉 **[Read the Setup Guide (docs/SETUP.md)](docs/SETUP.md)** to install Node.js and set up your Wallet.
+**TruthStamp** solves this:
+1.  **You upload your file.** we create a unique digital fingerprint (called a "Hash").
+2.  **We stamp it on the Blockchain.** This is like a public, digital stone tablet. Once written, it can never be changed.
+3.  **Proof of Originality.** If someone else tries to upload a cropped or edited version of your photo later, TruthStamp will say: *"Wait! This looks like a copy of [Your Name]'s photo from yesterday."*
 
-### Step 2: Set Up the Blockchain (Contracts)
+---
 
-Open a terminal (Command Prompt or PowerShell) and run:
+## 🛠️ The Tech Stack (What we used to build it)
+
+We used modern, industry-standard tools to build this demo.
+
+### 🖥️ Frontend (The Website)
+*   **[Next.js 16](https://nextjs.org/)**: The framework used to build the website (React-based). It makes the app fast and SEO-friendly.
+*   **[TypeScript](https://www.typescriptlang.org/)**: A version of JavaScript that helps catch errors early.
+*   **[Tailwind CSS](https://tailwindcss.com/)**: A utility-first CSS framework for styling the beautiful, dark-themed UI.
+*   **[Shadcn/UI](https://ui.shadcn.com/)**: A collection of re-usable components (buttons, cards, inputs) that look professional.
+*   **[Framer Motion](https://www.framer.com/motion/)**: Used for the smooth animations and transitions you see.
+*   **[Wagmi](https://wagmi.sh/) & [Viem](https://viem.sh/)**: The "bridge" libraries that let our website talk to your crypto wallet and the blockchain.
+
+### ⛓️ Backend (The Blockchain)
+*   **[Flare Network (Coston2 Testnet)](https://flare.network/)**: The blockchain we use. It's fast, low-cost, and has built-in data verification.
+*   **[Solidity](https://soliditylang.org/)**: The programming language for writing "Smart Contracts" (the logic that runs on the blockchain).
+*   **[Hardhat](https://hardhat.org/)**: A development environment for compiling, testing, and deploying our smart contracts.
+
+---
+
+## 🎮 Demo Mode Features
+
+Current version includes specific features for presentation stability:
+
+1.  **Strict "Original" Check**: For the demo, we use a special hashing method to ensure new uploads are treated as distinct originals.
+2.  **"Derived" Simulation**: To show how we catch fakes, you can upload a file with the **same filename** but slightly modified content. The system will flag it as "Derived".
+3.  **Demo Lock**: Stamping is restricted to a specific official sample image (`demo_sample.svg`) to ensure a predictable flow during live presentations.
+
+---
+
+## 🚀 How to Run (Step-by-Step)
+
+### 1. Requirements
+*   **Node.js** (Software to run JavaScript).
+*   **Metamask Wallet** (Browser Extension) with some **Coston2 Testnet Tokens** (You can get these for free from the Flare Faucet).
+
+### 2. Setup
+Clone the project and install dependencies:
 
 ```bash
+# 1. Download the code
+git clone https://github.com/your-username/TruthStamp.git
+cd TruthStamp
+
+# 2. Setup the Smart Contracts
 cd contracts
+npm install
+# (Optional) Deploy contracts if needed: 
+# npx hardhat run scripts/deploy.js --network coston2
+
+# 3. Setup the Website
+cd ../web
 npm install
 ```
 
-Now, start a "local blockchain" simulator. This runs on your computer and is super fast for testing.
+### 3. Run It
 ```bash
-npm run chain
-```
-**Keep this terminal open!** It mimics the real Internet.
-
-Open a **new** terminal window and deploy our contract to this local chain:
-```bash
-cd contracts
-npm run deploy:local
-```
-You will see a message like: `TruthStamp deployed to: 0x5FbDB...`
-
-### Step 3: Start the Website (Frontend)
-
-Open a **third** terminal window and run:
-
-```bash
-cd web
-npm install
+# Inside the 'web' folder:
 npm run dev
 ```
-
-Now, open your browser and go to: **http://localhost:3000**
-
-🎉 You should see the TruthStamp app!
+Open **[http://localhost:3000](http://localhost:3000)** in your browser.
 
 ---
 
-## 🌍 deploying to the "Real" Testnet (Coston2)
-
-If you want to show this to friends or submit it to the Hackathon, you need to put it on the public Internet (Flare Coston2 Testnet).
-
-1.  Make sure you followed the [Setup Guide](docs/SETUP.md) to get your Private Key and Coston2 tokens.
-2.  In the `contracts` folder, create a file named `.env`.
-3.  Add your private key inside: `PRIVATE_KEY=your_key_here`
-4.  Run this command:
-    ```bash
-    npm run deploy:coston2
-    ```
-5.  Copy the new address (e.g., `0x123...`).
-6.  Go to `web/app/stamp/page.tsx` and `web/app/verify/page.tsx` and replace `ContractAddress` with your new address.
-7.  Restart your website (`Ctrl+C` then `npm run dev`).
-
-## 🛠️ Commands Cheatsheet
-
-**Contracts Folder:**
-*   `npm run chain`: Starts local blockchain.
-*   `npm run compile`: Checks your Solidity code for errors.
-*   `npm run test`: Runs automated tests.
-*   `npm run deploy:local`: Deploys to your local chain.
-*   `npm run deploy:coston2`: Deploys to the public Flare testnet.
-
-**Web Folder:**
-*   `npm run dev`: Starts the website locally.
-*   `npm run build`: Visual check if the site is ready for production.
-
----
-
-*Built for the Flare Hackathon ☀️*
+*Built for the Flare Network Hackathon.*

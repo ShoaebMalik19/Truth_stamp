@@ -136,8 +136,8 @@ export default function LandingPage() {
               transition={{ delay: 0.7 + i * 0.1 }}
               onClick={() => setActiveFeature(activeFeature === i ? null : i)}
               className={`group relative p-6 rounded-2xl border transition-all duration-300 cursor-pointer overflow-hidden ${activeFeature === i
-                  ? 'bg-slate-900/80 border-teal-500/50 shadow-xl shadow-teal-900/20'
-                  : 'bg-slate-900/40 border-white/5 hover:border-white/10 hover:bg-slate-900/60'
+                ? 'bg-slate-900/80 border-teal-500/50 shadow-xl shadow-teal-900/20'
+                : 'bg-slate-900/40 border-white/5 hover:border-white/10 hover:bg-slate-900/60'
                 }`}
             >
               <div className="flex items-center gap-4 relative z-10">

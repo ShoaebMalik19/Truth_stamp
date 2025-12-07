@@ -466,8 +466,8 @@ export default function StampPage() {
                                     </Button>
                                 </motion.div>
                             )}
-                        </AnimatePresence>
-                    </CardContent>
+                        </AnimatePresence >
+                    </CardContent >
                 </Card>
             </div>
         </div>
