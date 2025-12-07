@@ -33,6 +33,29 @@ We used modern, industry-standard tools to build this demo.
 *   **[Flare Network (Coston2 Testnet)](https://flare.network/)**: The blockchain we use. It's fast, low-cost, and has built-in data verification.
 *   **[Solidity](https://soliditylang.org/)**: The programming language for writing "Smart Contracts" (the logic that runs on the blockchain).
 *   **[Hardhat](https://hardhat.org/)**: A development environment for compiling, testing, and deploying our smart contracts.
+**
+*    3. *On-Chain Verification Using Flare***
+
+TruthStamp uses Flare as its decentralized trust layer:
+
+* *Smart Contracts*
+
+  * Store fingerprints and classification
+  * Enforce “first original only” logic
+  * Maintain derivation links
+
+* *FTSO (Flare Time Series Oracle)*
+
+  * Anchors trusted timestamps
+  * Prevents back-dating or manipulation
+
+* *FDC (Flare Data Connector)*
+
+  * Verifies existence of URLs at stamp time
+  * Connects off-chain content to on-chain proofs
+
+No centralized backend determines authenticity.
+
 
 ---
 
