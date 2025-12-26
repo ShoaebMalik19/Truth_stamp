@@ -8,30 +8,19 @@ import { CheckCircle2, Clock, Globe, Share2, ShieldCheck } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { useReadContract } from 'wagmi'
 
-// --- Mock Contract ABI for demonstration ---
-const ABI = [
-    {
-        "inputs": [{ "internalType": "bytes32", "name": "_contentHash", "type": "bytes32" }],
-        "name": "verifyContent",
-        "outputs": [
-            { "internalType": "bool", "name": "exists", "type": "bool" },
-            { "internalType": "uint256", "name": "firstTimestamp", "type": "uint256" },
-            { "internalType": "address", "name": "firstOwner", "type": "address" }
-        ],
-        "stateMutability": "view",
-        "type": "function"
-    }
-] as const
-
-const ContractAddress = process.env.NEXT_PUBLIC_CONTRACT_ADDRESS || "0x5FbDB2315678afecb367f032d93F642f64180aa3"
+import { TRUTHSTAMP_ABI, TRUTHSTAMP_CONTRACT_ADDRESS } from '@/lib/constants'
 
 export default function PublicStampPage() {
+    // --- Configuration ---
+    const ContractAddress = TRUTHSTAMP_CONTRACT_ADDRESS
+    const ABI = TRUTHSTAMP_ABI
     const params = useParams()
     const id = params.id as string // In this demo, ID is the Content Hash
 
-    // Format hash safely
+    // Helper: Ensure the hash starts with '0x' so the blockchain understands it
     const formatHash = (h: string) => h.startsWith('0x') ? h as `0x${string}` : `0x${h}` as `0x${string}`
 
+    // Hook: Ask the blockchain for data about this hash
     const { data: verificationResult, isLoading } = useReadContract({
         address: ContractAddress as `0x${string}`,
         abi: ABI,

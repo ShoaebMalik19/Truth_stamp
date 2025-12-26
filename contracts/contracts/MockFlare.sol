@@ -2,9 +2,8 @@
 pragma solidity ^0.8.20;
 
 contract MockFDC {
-    function verifyAttestation(bytes32, bytes32, bytes calldata _proof) external pure returns (bool) {
-        // Return true if proof is not empty
-        return _proof.length > 0;
+    function verifyAttestation(bytes32, bytes32, bytes calldata) external pure returns (bool) {
+        return true;
     }
 }
 

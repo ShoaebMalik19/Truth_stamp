@@ -10,76 +10,40 @@ import { useReadContract } from 'wagmi'
 import { keccak256, toHex } from 'viem'
 import { cn } from '@/lib/utils'
 
-// --- Contract ABI ---
-const ABI = [
-    {
-        "inputs": [{ "internalType": "bytes32", "name": "_contentHash", "type": "bytes32" }],
-        "name": "verifyContent",
-        "outputs": [
-            { "internalType": "bool", "name": "exists", "type": "bool" },
-            { "internalType": "uint256", "name": "timestamp", "type": "uint256" },
-            { "internalType": "address", "name": "owner", "type": "address" },
-            { "internalType": "string", "name": "sourceUrl", "type": "string" },
-            { "internalType": "uint8", "name": "matchType", "type": "uint8" },
-            { "internalType": "bytes32", "name": "derivedFrom", "type": "bytes32" }
-        ],
-        "stateMutability": "view",
-        "type": "function"
-    },
-    {
-        "inputs": [{ "internalType": "string", "name": "_url", "type": "string" }],
-        "name": "verifyUrl",
-        "outputs": [
-            { "internalType": "bool", "name": "exists", "type": "bool" },
-            { "internalType": "uint256", "name": "timestamp", "type": "uint256" },
-            { "internalType": "address", "name": "owner", "type": "address" },
-            { "internalType": "bytes32", "name": "contentHash", "type": "bytes32" },
-            { "internalType": "uint8", "name": "matchType", "type": "uint8" },
-            { "internalType": "bytes32", "name": "derivedFrom", "type": "bytes32" }
-        ],
-        "stateMutability": "view",
-        "type": "function"
-    },
-    {
-        "inputs": [{ "internalType": "bytes32", "name": "_perceptualHash", "type": "bytes32" }],
-        "name": "findSimilarStamp",
-        "outputs": [
-            { "internalType": "bool", "name": "found", "type": "bool" },
-            { "internalType": "bytes32", "name": "matchHash", "type": "bytes32" },
-            { "internalType": "uint256", "name": "distance", "type": "uint256" },
-            { "internalType": "uint256", "name": "timestamp", "type": "uint256" },
-            { "internalType": "address", "name": "owner", "type": "address" }
-        ],
-        "stateMutability": "view",
-        "type": "function"
-    }
-] as const
-
-const ContractAddress = process.env.NEXT_PUBLIC_CONTRACT_ADDRESS || "0x77409263fa088B612b004F59b37a9b94d3B121b1"
+import { TRUTHSTAMP_ABI, TRUTHSTAMP_CONTRACT_ADDRESS } from '@/lib/constants'
 
 export default function VerifyPage() {
+    // --- Configuration ---
+    // Single source of truth for Contract ABI and Address
+    const ContractAddress = TRUTHSTAMP_CONTRACT_ADDRESS
+    const ABI = TRUTHSTAMP_ABI
+    // --- Page State (Inputs) ---
     const [query, setQuery] = useState('')
+    // what are we confirming? Hash, Url, or File?
     const [searchType, setSearchType] = useState<'hash' | 'url' | 'file' | null>(null)
-    const [searchValue, setSearchValue] = useState<string | null>(null) // Hash or URL
+    const [searchValue, setSearchValue] = useState<string | null>(null) // the actual value to search
     const [perceptualHash, setPerceptualHash] = useState<string | null>(null)
 
-    // File State
+    // File State (Drag and Drop)
     const [isDragging, setIsDragging] = useState(false)
     const [fileName, setFileName] = useState<string | null>(null)
     const fileInputRef = useRef<HTMLInputElement>(null)
 
-    // --- Hooks ---
+    // --- Hooks: Asking the Blockchain Questions ---
 
-    // 1. Exact Content Check
+    // Question 1: "Do you have a record with this exact Content Hash?"
     const { data: hashResult, isLoading: hashLoading } = useReadContract({
         address: ContractAddress as `0x${string}`,
         abi: ABI,
         functionName: 'verifyContent',
+        // Passed only if we are searching by hash or file
         args: (searchType === 'hash' || searchType === 'file') ? [searchValue as `0x${string}`] : undefined,
+        // Only run this query if we have a search value
         query: { enabled: (searchType === 'hash' || searchType === 'file') && !!searchValue }
     })
 
-    // 2. Exact URL Check
+    // Question 2: "Do you have a record with this exact URL?"
+    // (Smart contract hashes the URL string internally to check)
     const { data: urlResult, isLoading: urlLoading } = useReadContract({
         address: ContractAddress as `0x${string}`,
         abi: ABI,
@@ -88,7 +52,8 @@ export default function VerifyPage() {
         query: { enabled: searchType === 'url' && !!searchValue }
     })
 
-    // 3. Similarity Check (for Files/Hashes that are NOT exact matches)
+    // Question 3: "Do you have anything vaguely similar to this?"
+    // (Used for finding modified copies of images/files)
     const { data: similarityResult, isLoading: similarityLoading } = useReadContract({
         address: ContractAddress as `0x${string}`,
         abi: ABI,
@@ -99,20 +64,24 @@ export default function VerifyPage() {
 
     const isLoading = hashLoading || urlLoading || similarityLoading
 
-    // --- Handlers ---
+    // --- Input Handlers ---
 
+    // Parse the user's text input to guess what they are searching for
     const handleSearch = () => {
+        // If file is already selected, use that
         if (fileName && searchValue && perceptualHash) {
             setSearchType('file')
             return
         }
 
         const trimmed = query.trim()
+        // Reset old state
         setFileName(null)
         setPerceptualHash(null)
         setSearchType(null)
         setSearchValue(null)
 
+        // Case A: User pasted a full URL to our own site (e.g. truthstamp.com/verify/0x...)
         if (trimmed.includes('/verify/')) {
             const parts = trimmed.split('/verify/')
             if (parts.length > 1 && /^0x[a-fA-F0-9]{64}$/.test(parts[1])) {
@@ -122,12 +91,14 @@ export default function VerifyPage() {
             }
         }
 
+        // Case B: User pasted a raw Hex Hash (starts with 0x and is 64 chars long)
         if (/^0x[a-fA-F0-9]{64}$/.test(trimmed)) {
             setSearchType('hash')
             setSearchValue(trimmed)
             return
         }
 
+        // Case C: User pasted a generic http URL
         if (trimmed.startsWith('http')) {
             setSearchType('url')
             setSearchValue(trimmed)
@@ -137,14 +108,19 @@ export default function VerifyPage() {
         alert("Invalid input.")
     }
 
+    // Process a file dropped by the user
+    // We must hash it LOCALLY first, then send the Hash to the blockchain to check.
+    // We DO NOT upload the file to the blockchain (that would be expensive and slow).
     const processFile = async (file: File) => {
         setFileName(file.name)
         setQuery('') // clear text input
 
         const buffer = await file.arrayBuffer()
         const fileBytes = new Uint8Array(buffer)
+
+        // Calculate the fingerprint (Hash)
         const hash = keccak256(fileBytes)
-        // Demo: size as pHash
+        // Calculate the "Visual" fingerprint (Demo)
         const pHash = toHex(file.size, { size: 32 })
 
         setSearchValue(hash)
@@ -160,35 +136,35 @@ export default function VerifyPage() {
         }
     }
 
-    // --- Logic Parsing ---
+    // --- Interpreting Results ---
 
-    // Exact Match?
+    // 1. Did we find an exact match?
     const exactResult = searchType === 'url' ? urlResult : hashResult
     const isExactMatch = exactResult ? exactResult[0] : false
 
-    // Similarity Match? (Only relevant if NOT exact match)
-    // similarityResult: [found, matchHash, distance, timestamp, owner]
+    // 2. Did we find a similar match? (Only relevant if NOT exact)
+    // similarityResult format: [found, matchHash, distance, timestamp, owner]
     const isSimilarMatch = !isExactMatch && similarityResult && similarityResult[0]
 
-    // Final Display Data
+    // 3. Prepare data for display
     let displayData = null
     let status: 'authentic' | 'derived' | 'none' = 'none'
 
     if (isExactMatch && exactResult) {
         status = 'authentic'
         displayData = {
-            timestamp: Number(exactResult[1]),
-            owner: exactResult[2],
-            hash: searchType === 'url' ? (exactResult as any)[3] : searchValue,
-            url: searchType === 'url' ? searchValue : (exactResult as any)[3]
+            timestamp: Number(exactResult[1]), // When was it stamped?
+            owner: exactResult[2], // Who stamped it?
+            hash: searchType === 'url' ? (exactResult as unknown as [boolean, bigint, string, string, number, string])[3] : searchValue,
+            url: searchType === 'url' ? searchValue : (exactResult as unknown as [boolean, bigint, string, string, number, string])[3]
         }
     } else if (isSimilarMatch && similarityResult) {
-        status = 'derived'
+        status = 'derived' // It's a copy!
         displayData = {
             timestamp: Number(similarityResult[3]),
             owner: similarityResult[4],
             hash: similarityResult[1], // The hash of the ORIGINAL
-            distance: Number(similarityResult[2])
+            distance: Number(similarityResult[2]) // How different is it?
         }
     }
 

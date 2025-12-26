@@ -1,33 +1,63 @@
-'use client'
+'use client' // This tells Next.js this component runs in the browser (interactive), not just on the server.
 
+// --- Imports ---
+// React Hooks: Tools to manage responsiveness and lifecycle of the page.
 import { useState, useEffect } from 'react'
+
+// Animation library for smooth effects (fades, slides).
 import { motion, AnimatePresence } from "framer-motion"
+
+// Custom UI components (Buttons, Logos) we built to reuse code.
 import { Button } from "@/components/ui/button"
+
+// Next.js Link: Like an <a> tag but faster because it doesn't reload the page.
 import Link from "next/link"
+
+// Icons: Beautiful SVG icons from the Lucide library.
 import { ArrowRight, ShieldCheck, Clock, FileCheck, ExternalLink, ChevronDown } from "lucide-react"
+
+// Wagmi: The library we use to talk to Ethereum/Flare wallets.
 import { useAccount, useConnect, useDisconnect } from 'wagmi'
 import { injected } from 'wagmi/connectors'
+
+// A decorative background component.
 import { Waves } from '@/components/Waves'
 
+// --- Main Component Function ---
 export default function LandingPage() {
+  // --- Wallet Hooks ---
+  // These give us the user's wallet status (connected?, address?).
   const { address, isConnected } = useAccount()
   const { connect } = useConnect()
   const { disconnect } = useDisconnect()
+
+  // --- Local State ---
+  // useState creates a variable (isMounted) and a setter (setIsMounted).
+  // When the setter is called, the page re-renders with new data.
   const [isMounted, setIsMounted] = useState(false)
+
+  // activeFeature tracks which of the 3 cards at the bottom is currently expanded.
   const [activeFeature, setActiveFeature] = useState<number | null>(null)
 
+  // useEffect runs ONCE when the page loads.
+  // We use this to avoid hydration errors (ensuring server and client match).
   useEffect(() => {
     setIsMounted(true)
   }, [])
 
+  // Function to trigger wallet connection popup (MetaMask, etc.)
   const handleConnect = () => {
     connect({ connector: injected() })
   }
 
+  // --- Rendering (The HTML) ---
   return (
     <div className="min-h-screen bg-slate-950 text-slate-50 font-sans selection:bg-teal-500/30">
-      {/* Navigation */}
+
+      {/* --- Navigation Bar --- */}
       <nav className="fixed top-0 left-0 right-0 z-50 px-6 py-4 flex justify-between items-center backdrop-blur-md bg-slate-950/80 border-b border-white/5 shadow-sm transition-all duration-300">
+
+        {/* Logo Section */}
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 bg-gradient-to-tr from-teal-400 to-emerald-600 rounded-lg flex items-center justify-center shadow-lg shadow-teal-500/20">
             <span className="text-white font-bold font-mono">T</span>
@@ -37,6 +67,7 @@ export default function LandingPage() {
           </span>
         </div>
 
+        {/* Menu & Connect Button */}
         <div className="flex items-center gap-6">
           <Link href="/verify" className="hidden md:block text-slate-400 hover:text-white text-sm font-medium transition-colors">
             Verify
@@ -45,6 +76,7 @@ export default function LandingPage() {
             Start Stamping
           </Link>
 
+          {/* Conditional Rendering: Show Address if connected, else Show Connect Button */}
           {isMounted && isConnected ? (
             <div
               className="flex items-center gap-3 bg-slate-900/80 border border-slate-800 rounded-full pl-4 pr-2 py-1.5 transition-all hover:bg-slate-900 hover:border-slate-700 cursor-pointer group"
@@ -53,6 +85,7 @@ export default function LandingPage() {
               <div className="flex items-center gap-2 text-xs font-medium">
                 <span className="text-teal-400">Flare Coston2</span>
                 <span className="text-slate-600">·</span>
+                {/* slice(0,6) shows first 6 chars of address, slice(-4) shows last 4 */}
                 <span className="text-slate-300 font-mono">{address?.slice(0, 6)}...{address?.slice(-4)}</span>
               </div>
               <ExternalLink className="w-3 h-3 text-slate-500 group-hover:text-white transition-colors" />
@@ -68,11 +101,13 @@ export default function LandingPage() {
         </div>
       </nav>
 
-      {/* Hero Section */}
+      {/* --- Main Hero Section --- */}
       <main className="relative flex flex-col items-center justify-center min-h-screen px-4 pt-20 overflow-hidden">
+        {/* Background Animation */}
         <Waves />
 
         <div className="relative z-10 flex flex-col items-center max-w-5xl mx-auto text-center space-y-10">
+          {/* Animated Header */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -91,6 +126,7 @@ export default function LandingPage() {
             </p>
           </motion.div>
 
+          {/* Action Buttons */}
           <motion.div
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
@@ -110,7 +146,9 @@ export default function LandingPage() {
           </motion.div>
         </div>
 
-        {/* Feature Cards - Interactive */}
+        {/* --- Interactive Feature Cards --- 
+            We map over an array of data to create 3 similar cards without copying code 3 times.
+        */}
         <div className="relative z-10 grid grid-cols-1 md:grid-cols-3 gap-6 mt-32 max-w-6xl w-full px-4 pb-20">
           {[
             {
@@ -140,6 +178,7 @@ export default function LandingPage() {
                 : 'bg-slate-900/40 border-white/5 hover:border-white/10 hover:bg-slate-900/60'
                 }`}
             >
+              {/* Card Header */}
               <div className="flex items-center gap-4 relative z-10">
                 <div className={`p-3 rounded-xl border transition-colors ${activeFeature === i ? 'bg-slate-950 border-teal-500/30' : 'bg-slate-950 border-slate-800 group-hover:border-slate-700'
                   }`}>
@@ -155,6 +194,7 @@ export default function LandingPage() {
                 <ChevronDown className={`w-5 h-5 text-slate-500 transition-transform duration-300 ${activeFeature === i ? 'rotate-180 text-teal-400' : ''}`} />
               </div>
 
+              {/* Collapsible Content */}
               <AnimatePresence>
                 {activeFeature === i && (
                   <motion.div
@@ -171,6 +211,7 @@ export default function LandingPage() {
                 )}
               </AnimatePresence>
 
+              {/* Decorative Glow Effect */}
               {activeFeature === i && (
                 <motion.div
                   initial={{ opacity: 0 }} animate={{ opacity: 1 }}

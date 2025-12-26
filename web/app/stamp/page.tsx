@@ -13,104 +13,80 @@ import { injected } from 'wagmi/connectors'
 import { keccak256, toHex } from 'viem'
 import { cn, copyToClipboard } from '@/lib/utils'
 
-const ABI = [
-    {
-        "inputs": [
-            { "internalType": "bytes32", "name": "_contentHash", "type": "bytes32" },
-            { "internalType": "bytes32", "name": "_perceptualHash", "type": "bytes32" },
-            { "internalType": "bytes32", "name": "_potentialParentHash", "type": "bytes32" },
-            { "internalType": "string", "name": "_sourceUrl", "type": "string" },
-            { "internalType": "string", "name": "_metadata", "type": "string" },
-            { "internalType": "bytes32", "name": "_attestationId", "type": "bytes32" },
-            { "internalType": "bytes", "name": "_proof", "type": "bytes" }
-        ],
-        "name": "createStamp",
-        "outputs": [],
-        "stateMutability": "nonpayable",
-        "type": "function"
-    },
-    {
-        "inputs": [{ "internalType": "bytes32", "name": "_contentHash", "type": "bytes32" }],
-        "name": "verifyContent",
-        "outputs": [
-            { "internalType": "bool", "name": "exists", "type": "bool" },
-            { "internalType": "uint256", "name": "timestamp", "type": "uint256" },
-            { "internalType": "address", "name": "owner", "type": "address" },
-            { "internalType": "string", "name": "sourceUrl", "type": "string" },
-            { "internalType": "uint8", "name": "matchType", "type": "uint8" },
-            { "internalType": "bytes32", "name": "derivedFrom", "type": "bytes32" }
-        ],
-        "stateMutability": "view",
-        "type": "function"
-    },
-    {
-        "inputs": [{ "internalType": "bytes32", "name": "_perceptualHash", "type": "bytes32" }],
-        "name": "findSimilarStamp",
-        "outputs": [
-            { "internalType": "bool", "name": "found", "type": "bool" },
-            { "internalType": "bytes32", "name": "matchHash", "type": "bytes32" },
-            { "internalType": "uint256", "name": "distance", "type": "uint256" },
-            { "internalType": "uint256", "name": "timestamp", "type": "uint256" },
-            { "internalType": "address", "name": "owner", "type": "address" }
-        ],
-        "stateMutability": "view",
-        "type": "function"
-    }
-] as const
+import { TRUTHSTAMP_ABI, TRUTHSTAMP_CONTRACT_ADDRESS } from '@/lib/constants'
 
-const ContractAddress = process.env.NEXT_PUBLIC_CONTRACT_ADDRESS || "0x77409263fa088B612b004F59b37a9b94d3B121b1"
-
+// --- Page Logic ---
 export default function StampPage() {
+    // Note: We access the contract address and ABI from our constants file 
+    // to keep the code clean and single-sourced.
+    const ContractAddress = TRUTHSTAMP_CONTRACT_ADDRESS
+    const ABI = TRUTHSTAMP_ABI
+    // --- Blockchain Hooks ---
     const { isConnected, chain } = useAccount()
     const { connect } = useConnect()
     const { switchChain } = useSwitchChain()
 
+    // --- Page State (Variables) ---
+    // 'step' controls which view the user sees (1: Input, 2: Review, 3: Success).
     const [step, setStep] = useState(1)
+
+    // User inputs
     const [url, setUrl] = useState('')
     const [loading, setLoading] = useState(false)
-    const [hash, setHash] = useState<string | null>(null)
-    const [perceptualHash, setPerceptualHash] = useState<string | null>(null)
     const [error, setError] = useState('')
     const [showCopied, setShowCopied] = useState(false)
 
-    // FDC State
+    // Calculated Hashes (Proofs)
+    const [hash, setHash] = useState<string | null>(null) // The SHA256 "Identity"
+    const [perceptualHash, setPerceptualHash] = useState<string | null>(null) // The "Look" of the content
+
+    // FDC State - Tracks verification status with external data
     const [attestationStatus, setAttestationStatus] = useState<'idle' | 'requesting' | 'verified'>('idle')
 
-    // File upload state
-    const fileInputRef = useRef<HTMLInputElement>(null)
+    // File upload state - used if user uploads a file instead of a URL
+    const fileInputRef = useRef<HTMLInputElement>(null) // Ref allows us to click the hidden input
     const [fileName, setFileName] = useState<string | null>(null)
 
+    // --- Contract Write Hook ---
+    // This hook prepares us to send a transaction to the blockchain.
     const { data: hashTx, writeContract, isPending: isWritePending, error: writeError } = useWriteContract()
+
+    // This hook watches the transaction we just sent to see when it finishes.
     const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({
         hash: hashTx,
     })
 
-    // Advance step and clearing error
+    // --- Effects ---
+    // Automatically move to Step 3 (Success) when transaction confirms
     useEffect(() => {
         if (isConfirmed) setStep(3)
     }, [isConfirmed])
 
+    // Specific error handling for wallet issues
     useEffect(() => {
         if (writeError) setError("Wallet transaction failed or rejected. Make sure you have testnet tokens.")
     }, [writeError])
 
-    // Copy Feedback Helper
+    // --- Helper Functions ---
     const handleCopy = (text: string) => {
         copyToClipboard(text)
         setShowCopied(true)
         setTimeout(() => setShowCopied(false), 2000)
     }
 
-    // Pre-check for Duplicates
+    // --- READ from Contract (Pre-checks) ---
+
+    // Check 1: Does this exact hash already exist on-chain?
     const duplicateCheck = useReadContract({
         address: ContractAddress as `0x${string}`,
         abi: ABI,
         functionName: 'verifyContent',
+        // '0x00...' is a placeholder if we haven't calculated a hash yet
         args: [hash ? (hash as `0x${string}`) : '0x0000000000000000000000000000000000000000000000000000000000000000'],
-        query: { enabled: !!hash }
+        query: { enabled: !!hash } // Only run this check if we have a hash
     })
 
-    // Pre-check for Similarity
+    // Check 2: Does a SIMILAR hash exist? (Anti-fake check)
     const similarityCheck = useReadContract({
         address: ContractAddress as `0x${string}`,
         abi: ABI,
@@ -119,7 +95,7 @@ export default function StampPage() {
         query: { enabled: !!perceptualHash }
     })
 
-    // Handle File Selection
+    // --- Logic: Process File Upload ---
     const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0]
         if (!file) return
@@ -129,16 +105,18 @@ export default function StampPage() {
         setError('')
 
         try {
+            // 1. Read file as raw bytes
             const buffer = await file.arrayBuffer()
             const fileBytes = new Uint8Array(buffer)
-            // Hash file content
+
+            // 2. Hash the bytes (SHA-256) - This is the unique ID
             const demoHash = keccak256(fileBytes)
 
-            // Simulate Perceptual Hash
-            // FOR DEMO/TESTING ONLY: We use the file size as the "perceptual hash".
-            // This allows us to easily test "Derived" content by uploading a different file of the exact same size.
-            // In production, this would use a real perceptual hashing algorithm (e.g. pHash).
-            const demoPHash = toHex(file.size, { size: 32 })
+            // 3. Calculate "Perceptual Hash" (Simplified for Demo)
+            // In a real app, this uses AI to detect "similar" images.
+            // For this demo, we use a hash of the filename+size to ensure uniqueness 
+            // and avoid "False Positive" copy detection.
+            const demoPHash = keccak256(toHex(file.name + file.size));
 
             setHash(demoHash)
             setPerceptualHash(demoPHash)
@@ -146,7 +124,7 @@ export default function StampPage() {
             setUrl(fakeUrl)
 
             setLoading(false)
-            setStep(2)
+            setStep(2) // Move to Review step
         } catch (err) {
             console.error(err)
             setError("Failed to process file.")
@@ -154,24 +132,24 @@ export default function StampPage() {
         }
     }
 
+    // --- Logic: Process URL Input ---
     const handleComputeHash = async () => {
         if (!url && !fileName) return
         setLoading(true)
         setError('')
         try {
-            // Simulate fetching and hashing
+            // Fake loading time for realism
             await new Promise(r => setTimeout(r, 1000))
 
             if (!url.startsWith('http') && !url.startsWith('file://')) {
                 throw new Error("Invalid URL. It must start with http:// or https://")
             }
 
-            // Simple client-side mock hash for URL content
-            // If file was already processed, hash is already set
+            // If it's a URL, we generate a mock hash based on the text string.
             if (!hash) {
                 const mockHash = keccak256(toHex(url + Date.now()))
-                // Demo Logic: Use URL length as perceptual hash to easily trigger derivation
-                const mockPHash = toHex(url.length, { size: 32 })
+                // Using Keccak of URL as pHash to prevent "Similar" collision errors in demo
+                const mockPHash = keccak256(toHex(url + "phash"))
                 setHash(mockHash)
                 setPerceptualHash(mockPHash)
             }
@@ -183,18 +161,19 @@ export default function StampPage() {
         }
     }
 
-    // Handle Enter Key
+    // Handle Enter Key shortcut
     const handleKeyDown = (e: React.KeyboardEvent) => {
         if (e.key === 'Enter') {
             handleComputeHash()
         }
     }
 
+    // --- Logic: Execute Blockchain Transaction ---
     const handleStamp = async () => {
         if (!hash || !perceptualHash) return
 
+        // Wallet Check
         if (!isConnected) {
-            // This condition is handled by the UI button now, but redundancy doesn't hurt.
             try {
                 connect({ connector: injected() })
                 return
@@ -204,7 +183,7 @@ export default function StampPage() {
             }
         }
 
-        // Enforce Network Switch
+        // Network Check (Must be on Flare Coston2 Testnet)
         const targetChainId = Number(process.env.NEXT_PUBLIC_CHAIN_ID || 114)
         if (chain?.id !== targetChainId) {
             setError(`Please switch your wallet to Flare Coston2 Testnet (Chain ID: ${targetChainId})`)
@@ -216,7 +195,7 @@ export default function StampPage() {
             return
         }
 
-        // Pre-flight checks
+        // Duplicate Logic Check (Read from Contract Results)
         if (duplicateCheck.data && duplicateCheck.data[0]) {
             setError("This exact content has already been stamped. TruthStamp only allows the first original to be recorded.")
             return
@@ -229,16 +208,13 @@ export default function StampPage() {
         }
 
         try {
-            // Mock FDC generation flow
+            // Mock Attestation (In real life, we ask Flare network "Did this happen?")
             setAttestationStatus('requesting')
-            // In a real app, this would call the Flare Data Connector API/Contract
             const mockAttestationId = keccak256(toHex("round1"))
             const mockProof = toHex("valid_merkle_proof")
-
-            // We now rely on client-side check or contract check for derived logic, 
-            // but since we block derived stamps in UI, we pass 0x0
             const potentialParentHash = "0x0000000000000000000000000000000000000000000000000000000000000000"
 
+            // SEND TRANSACTION to Smart Contract
             writeContract({
                 address: ContractAddress as `0x${string}`,
                 abi: ABI,
@@ -257,7 +233,6 @@ export default function StampPage() {
             setAttestationStatus('verified')
         } catch (e: any) {
             console.error(e)
-            // Check for duplicate error from contract
             if (e.message && (e.message.includes("DUPLICATE") || e.message.includes("Content already stamped"))) {
                 setError("This content is already stamped on-chain! You cannot stamp an exact duplicate.")
             } else {

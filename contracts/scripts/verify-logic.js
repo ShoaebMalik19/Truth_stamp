@@ -1,6 +1,11 @@
-const hre = require("hardhat");
+import hre from "hardhat";
+
+// This script simulates a full usage cycle of the TruthStamp contract.
+// It is useful for verifying that your smart contract logic works as expected BEFORE connecting the frontend.
 
 async function main() {
+    // 1. Setup: Get the deployed contract
+    // Replace this with your actual deployed address if running against Testnet
     const contractAddress = "0xa85233C63b9Ee964Add6F2cffe00Fd84eb32338f";
     const TruthStamp = await hre.ethers.getContractFactory("TruthStamp");
     const truthStamp = await TruthStamp.attach(contractAddress);
@@ -8,17 +13,17 @@ async function main() {
     const [deployer] = await hre.ethers.getSigners();
     console.log("Testing with account:", deployer.address);
 
+    // Mock Data for inputs
     const MOCK_PROOF = "0x123456";
     const MOCK_ATTESTATION_ID = "0x" + "1".repeat(64); // random bytes32
 
-    // Test Case 1: Create ORIGINAL Stamp
-    // Content A, PHash X
+    // --- Test Case 1: Create ORIGINAL Stamp ---
+    // We create a stamp for "Content A". Since it's new, it should be marked ORIGINAL.
     const contentHashA = hre.ethers.id("Content A " + Date.now()); // Ensure unique
     const pHashX = hre.ethers.id("Perceptual X");
 
     console.log("\n--- Test Case 1: Stamping ORIGINAL ---");
     console.log("Content Hash:", contentHashA);
-    console.log("Perceptual Hash:", pHashX);
 
     try {
         let tx = await truthStamp.createStamp(
@@ -31,47 +36,48 @@ async function main() {
             MOCK_PROOF
         );
         await tx.wait();
-        console.log("✅ Original Stamp Minter");
+        console.log("✅ Original Stamp Minted");
 
-        // Verify
+        // Verify it was saved correctly
         let result = await truthStamp.verifyContent(contentHashA);
-        console.log("Verification Result:", result);
-        console.log("Is Original? (MatchType 0):", result.matchType === 0n);
-        if (result.matchType !== 0n) console.error("❌ FAILED: Should be ORIGINAL");
+        if (result.matchType === 0n) { // 0 = ORIGINAL
+            console.log("✅ Verified as ORIGINAL");
+        } else {
+            console.error("❌ FAILED: Should be ORIGINAL");
+        }
 
     } catch (e) {
         console.error("❌ Failed to mint original:", e);
     }
 
-    // Test Case 2: Create DERIVED Stamp
-    // Content B, PHash X (Same as A)
-    // We expect the contract to link it to A if we provide A as potential parent
+    // --- Test Case 2: Create DERIVED Stamp ---
+    // We create "Content B", but say it is derived from "Content A".
+    // It shares the same "Perceptual Hash" (visual likeness), so it should be allowed as a DERIVATIVE.
     const contentHashB = hre.ethers.id("Content B " + Date.now());
 
     console.log("\n--- Test Case 2: Stamping DERIVED ---");
     console.log("Content Hash:", contentHashB);
-    console.log("Perceptual Hash:", pHashX);
     console.log("Potential Parent:", contentHashA);
 
     try {
         let tx = await truthStamp.createStamp(
             contentHashB,
             pHashX,
-            contentHashA, // Point to A
+            contentHashA, // Point to A as the parent
             "http://test.com/derived",
             "metadata_derived",
             MOCK_ATTESTATION_ID,
             MOCK_PROOF
         );
         await tx.wait();
-        console.log("✅ Derived Stamp Minter");
+        console.log("✅ Derived Stamp Minted");
 
         // Verify
         let result = await truthStamp.verifyContent(contentHashB);
-        console.log("Is Derived? (MatchType 1):", result.matchType === 1n);
-        console.log("Derived From Correctly?", result.derivedFrom === contentHashA);
-
-        if (result.matchType !== 1n || result.derivedFrom !== contentHashA) {
+        // 1 = DERIVED
+        if (result.matchType === 1n && result.derivedFrom === contentHashA) {
+            console.log("✅ Verified as DERIVED from Parent");
+        } else {
             console.error("❌ FAILED: Should be DERIVED from A");
         }
 
@@ -79,8 +85,8 @@ async function main() {
         console.error("❌ Failed to mint derived:", e);
     }
 
-    // Test Case 3: Create DUPLICATE Stamp
-    // Content A (Again)
+    // --- Test Case 3: Create DUPLICATE Stamp ---
+    // We try to stamp "Content A" AGAIN. This should fail because it already exists.
     console.log("\n--- Test Case 3: Stamping DUPLICATE ---");
     try {
         let tx = await truthStamp.createStamp(
@@ -95,18 +101,12 @@ async function main() {
         await tx.wait();
         console.error("❌ FAILED: Should have reverted as DUPLICATE");
     } catch (e) {
-        if (e.message.includes("DUPLICATE")) {
+        if (e.message.includes("DUPLICATE") || e.toString().includes("DUPLICATE")) {
             console.log("✅ Correctly REVERTED with Duplicate error.");
         } else {
-            // Hardhat error messages can be nested
-            if (e.toString().includes("DUPLICATE")) {
-                console.log("✅ Correctly REVERTED with Duplicate error.");
-            } else {
-                console.log("✅ Reverted (Expected), but message differed or was generic:", e.message);
-            }
+            console.log("✅ Reverted (Expected), but message differed:", e.message);
         }
     }
-
 }
 
 main().catch((error) => {

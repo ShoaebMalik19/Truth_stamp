@@ -30,7 +30,7 @@ contract TruthStamp {
 
     address public fdcContract;
     address public ftsoContract;
-    uint256 public constant SIMILARITY_THRESHOLD = 10; // Simple Hamming distance threshold
+    uint256 public constant SIMILARITY_THRESHOLD = 3; // Reduced threshold to prevent false positives in demo
 
     mapping(bytes32 => Stamp) public stamps; 
     mapping(string => bytes32) public urlToHash;
