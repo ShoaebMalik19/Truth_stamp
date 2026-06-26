@@ -34,6 +34,15 @@ typechain-types/
 *.swp
 *.swo
 
+<<<<<<< HEAD
 # System
 thumbs.db
 .DS_Store
+=======
+# --- Miscellaneous ---
+*.pem
+*.key
+tmp/
+temp/
+.gitignore
+>>>>>>> 4df60932da7f76eba58c3f325acf0f1a015945fe

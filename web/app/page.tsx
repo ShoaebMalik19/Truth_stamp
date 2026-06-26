@@ -23,6 +23,8 @@ import { injected } from 'wagmi/connectors'
 // A decorative background component.
 import { Waves } from '@/components/Waves'
 
+import { DemoOne } from '@/components/ui/demo'
+
 // --- Main Component Function ---
 export default function LandingPage() {
   // --- Wallet Hooks ---
@@ -53,6 +55,7 @@ export default function LandingPage() {
   // --- Rendering (The HTML) ---
   return (
     <div className="min-h-screen bg-slate-950 text-slate-50 font-sans selection:bg-teal-500/30">
+      <DemoOne />
 
       {/* --- Navigation Bar --- */}
       <nav className="fixed top-0 left-0 right-0 z-50 px-6 py-4 flex justify-between items-center backdrop-blur-md bg-slate-950/80 border-b border-white/5 shadow-sm transition-all duration-300">
@@ -222,6 +225,51 @@ export default function LandingPage() {
           ))}
         </div>
       </main>
+
+      {/* --- How to Use Section --- */}
+      <section className="relative z-10 max-w-6xl mx-auto w-full px-4 py-24 border-t border-white/5 mt-10">
+        <div className="text-center mb-16">
+          <motion.h2 
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            className="text-3xl md:text-5xl font-bold text-white mb-4"
+          >
+            How it Works
+          </motion.h2>
+          <motion.p 
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ delay: 0.1 }}
+            className="text-slate-400 text-lg"
+          >
+            Four simple steps to secure your digital content on the blockchain.
+          </motion.p>
+        </div>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 pb-20">
+          {[
+            { step: "01", title: "Connect Wallet", desc: "Link your MetaMask wallet connected to the Flare Coston2 Testnet." },
+            { step: "02", title: "Upload File", desc: "Select any image, video, or document. We never upload or store the actual file." },
+            { step: "03", title: "Generate Hash", desc: "A unique cryptographic fingerprint (Hash) is created from your file directly in your browser." },
+            { step: "04", title: "Stamp on Chain", desc: "The fingerprint is permanently anchored to the Flare blockchain, creating an immutable proof of existence." }
+          ].map((item, idx) => (
+            <motion.div 
+              key={idx} 
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ delay: 0.2 + (idx * 0.1) }}
+              className="relative p-6 rounded-2xl bg-slate-900/40 border border-white/5 hover:border-teal-500/30 hover:bg-slate-900/60 transition-all duration-300"
+            >
+              <div className="text-5xl font-black text-slate-800/80 mb-4 tracking-tighter">{item.step}</div>
+              <h3 className="text-xl font-semibold text-white mb-2">{item.title}</h3>
+              <p className="text-slate-400 text-sm leading-relaxed">{item.desc}</p>
+            </motion.div>
+          ))}
+        </div>
+      </section>
     </div>
   )
 }
